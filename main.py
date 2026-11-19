@@ -1,121 +1,239 @@
 import sys
 import os
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox
 from PyQt6.QtGui import QPainter, QColor, QPen, QPixmap
-from PyQt6.QtCore import Qt, QRect
+from PyQt6.QtCore import Qt, QRect, QTimer
 
-COLS = 48
-ROWS = 27
-TILE_SIZE = 25  # Итоговое окно 1200 x 675
+# ==============================================================================
+# 1. КОНСТАНТЫ И СПИСКИ КАРТ (Данные уровней)
+# ==============================================================================
+GRAVEYARD_MAP = [
+    "#########################################..",
+    "#########################################..",
+    "#........................................FF",
+    "#.......G...#######...G..#######.######....",
+    "#.......G...#.....#...G..#.......#.........",
+    "#...........#.....#...G..#.......#.........",
+    "####..#######..#..########..####.#..######.",
+    "#..#..#........#............#....#..#....#.",
+    "#..#..#........#............#.......#.GG.#.",
+    "#..#..#.GG..#..######..######..#....#.####.",
+    "#..####.GG..#.......#..#.GG....####........",
+    "#.......GG..######..#....GG.......#........",
+    "#................#..#.............#...GG.##",
+    "#####...#####....#..###..########.#...GG.#.",
+    "#...#...#....GG..#.......#......#.#......#.",
+    "#...#...#....GG..#.......#..#...#.######.#.",
+    "#...#####..####..#####...D..#...#........#.",
+    "#..........#.....#...########...######...#.",
+    "#..........#............#............#...#.",
+    "#....GG....#.######.....#............#...#.",
+    "#..S.GG......#....#..G..#######......#####.",
+    "#........#####....#..G........#............",
+    "##########........#..G....GG..#......W.....",
+    "###########################################",
+]
+
+ROWS = len(GRAVEYARD_MAP)
+COLS = len(GRAVEYARD_MAP[0])
+TILE_SIZE = 25
+OFFSET_X = 28
+OFFSET_Y = 28
 
 
-class MapEditor(QWidget):
+# ==============================================================================
+# 2. КЛАСС ДЛЯ РАБОТЫ С БАЗОЙ ДАННЫХ (SQLite)
+# ==============================================================================
+class DatabaseManager:
+    """Управление таблицей рекордов и сохранением результатов"""
+
+    def __init__(self):
+        # Тут будет инициализация sqlite3.connect('game_data.db')
+        pass
+
+    def init_database(self):
+        """Создание таблиц рекордов, если их еще нет"""
+        pass
+
+    def save_record(self, player_name, level_name, time_spent, clicks):
+        """Сохранение нового рекорда в базу данных"""
+        pass
+
+    def get_top_records(self, level_name):
+        """Получение лучших результатов для таблицы рекордов"""
+        return []
+
+
+# ==============================================================================
+# 3. КЛАСС АЛГОРИТМА ПОИСКА ПУТИ (Pathfinding)
+# ==============================================================================
+class Pathfinder:
+    """Математический движок для расчета траекторий робота и Стража"""
+
+    @staticmethod
+    def find_path(grid, start, end):
+        """Алгоритм BFS / A* для поиска кратчайшего пути по матрице"""
+        # Возвращает список точек [(r,c), (r,c)...] в обход стен '#'
+        return []
+
+
+# ==============================================================================
+# 4. КЛАССЫ ИГРОВЫХ СУЩНОСТЕЙ (Entities)
+# ==============================================================================
+class RobotAgent:
+    """Главный герой — управляемый робот"""
+
+    def __init__(self, start_row, start_col):
+        self.row = start_row
+        self.col = start_col
+        self.x = 0  # Пиксельная координата X для плавной отрисовки
+        self.y = 0  # Пиксельная координата Y
+        self.path = []  # Список клеток текущего маршрута
+        self.direction = "right"  # Для будущей смены 4 спрайтов
+
+    def update_position(self):
+        """Плавное перемещение по пикселям к следующей клетке из self.path"""
+        pass
+
+
+class PatrolBot:
+    """Враг 1 и 2 — циклические патрульные боты"""
+
+    def __init__(self, route_points):
+        self.route = route_points  # Список точек, по которым бот ходит по кругу
+        self.current_target_idx = 0
+        self.x = 0
+        self.y = 0
+
+    def move(self):
+        """Движение по фиксированному замкнутому маршруту"""
+        pass
+
+
+class GuardianBot:
+    """Враг 3 — спящий Страж в тупике (Босс)"""
+
+    def __init__(self, spawn_row, spawn_col):
+        self.row = spawn_row
+        self.col = spawn_col
+        self.state = "SLEEP"  # Состояния: 'SLEEP' или 'HUNT'
+
+    def activate_hunt(self, target_robot):
+        """Переключение в режим погони и ежесекундный пересчет пути до Робота"""
+        pass
+
+
+# ==============================================================================
+# 5. КЛАСС ИГРОВОГО ПОЛЯ (Визуализация и игровое ядро)
+# ==============================================================================
+class GameBoard(QWidget):
+    """Кастомный виджет, где отрисовывается вся игра"""
+
     def __init__(self, image_path):
         super().__init__()
-        self.setFixedSize(COLS * TILE_SIZE, ROWS * TILE_SIZE)
-        self.setMouseTracking(True)
-        self.hover = (0, 0)
-        self.brush = None
+        self.setFixedSize(1200, 675)
 
+        # Шаг 1: Загрузка картинки карты
         self.bg = QPixmap(image_path) if os.path.exists(image_path) else None
-        if not self.bg or self.bg.isNull():
-            print(f"ВНИМАНИЕ: Файл не найден по пути {image_path}")
 
-        # Начальная рамка из стен
-        self.grid = [
-            ["#" if r in (0, ROWS - 1) or c in (0, COLS - 1) else "." for c in range(COLS)]
-            for r in range(ROWS)
-        ]
+        # Шаг 2: Инициализация списка карты
+        self.grid = [list(row) for row in GRAVEYARD_MAP]
+
+        # Инициализация персонажей
+        self.robot = RobotAgent(20, 3)
+        self.patrols = []
+        self.guardian = GuardianBot(22, 37)
+
+        # Главный игровой таймер (60 FPS)
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.game_loop)
 
     def paintEvent(self, event):
+        """Отрисовка фона-картинки, сетки, путей и спрайтов сущностей"""
         painter = QPainter(self)
-        if self.bg and not self.bg.isNull():
+        if self.bg:
             painter.drawPixmap(0, 0, self.width(), self.height(), self.bg)
 
-        for r in range(ROWS):
-            for c in range(COLS):
-                rect = QRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-                painter.setPen(QPen(QColor(255, 255, 255, 45), 1))
-                painter.drawRect(rect)
-
-                cell = self.grid[r][c]
-                if cell == "#":
-                    painter.fillRect(rect, QColor(255, 40, 40, 120))
-                elif cell == "G":
-                    painter.fillRect(rect, QColor(180, 0, 255, 145))
-                elif cell == "D":
-                    painter.fillRect(rect, QColor(255, 220, 0, 145))
-                elif cell == "S":
-                    painter.setBrush(QColor(0, 210, 255, 240))
-                    painter.drawEllipse(rect.adjusted(3, 3, -3, -3))
-                elif cell == "F":
-                    painter.setBrush(QColor(0, 255, 120, 240))
-                    painter.drawEllipse(rect.adjusted(3, 3, -3, -3))
-                elif cell == "W":
-                    painter.setBrush(QColor(255, 120, 0, 240))
-                    painter.drawEllipse(rect.adjusted(3, 3, -3, -3))
-
-    def paint_cell(self, r, c):
-        if 0 <= r < ROWS and 0 <= c < COLS and self.brush:
-            self.grid[r][c] = self.brush
-            self.update()
+        # Здесь будет QPainter рисовать кружочки робота, ботов и линию пути
+        pass
 
     def mousePressEvent(self, event):
-        c = int(event.position().x()) // TILE_SIZE
-        r = int(event.position().y()) // TILE_SIZE
-        if not (0 <= r < ROWS and 0 <= c < COLS):
-            return
+        """Событие клика: берем координаты и передаем в Pathfinder"""
+        pass
 
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.brush = "." if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier) else "#"
-        elif event.button() == Qt.MouseButton.RightButton:
-            self.brush = "." if self.grid[r][c] == "G" else "G"
-
-        self.paint_cell(r, c)
-
-    def mouseMoveEvent(self, event):
-        c = int(event.position().x()) // TILE_SIZE
-        r = int(event.position().y()) // TILE_SIZE
-        if 0 <= r < ROWS and 0 <= c < COLS:
-            self.hover = (r, c)
-            if self.brush:
-                self.paint_cell(r, c)
-
-    def mouseReleaseEvent(self, event):
-        self.brush = None
-
-    def keyPressEvent(self, event):
-        r, c = self.hover
-        key = event.key()
-        if key == Qt.Key.Key_S:
-            self.grid[r][c] = "S"
-        elif key == Qt.Key.Key_F:
-            self.grid[r][c] = "F"
-        elif key == Qt.Key.Key_W:
-            self.grid[r][c] = "W"
-        elif key == Qt.Key.Key_D:
-            self.grid[r][c] = "D"
-        elif key == Qt.Key.Key_Space:
-            print("\nGRAVEYARD_MAP = [")
-            for row in self.grid:
-                print(f'    "{"".join(row)}",')
-            print("]\n")
+    def game_loop(self):
+        """Сердце игры: вызывается каждые 16мс, двигает всех и проверяет коллизии"""
+        # 1. Сдвинуть робота
+        # 2. Сдвинуть патрули
+        # 3. Сдвинуть Стража (если HUNT)
+        # 4. Проверить триггеры (наступил на G? наступил на F?)
+        # 5. Проверить столкновение с ботами (Game Over)
         self.update()
 
 
+# ==============================================================================
+# 6. ГЛАВНОЕ ОКНО ПРИЛОЖЕНИЯ (Интерфейс и стили)
+# ==============================================================================
 class MainWindow(QMainWindow):
+    """Окно с верхней панелью управления и встроенным дизайном QSS"""
+
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Разметчик новой карты")
-        # Указываем путь к НОВОМУ файлу
-        self.editor = MapEditor("assets/graveyard_1.png")
-        self.editor.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setCentralWidget(self.editor)
+        self.setWindowTitle("CyberRunner AI")
+
+        # Создаем общую компоновку (Панель кнопок + Игровое поле)
+        self.central_widget = QWidget()
+        self.main_layout = QVBoxLayout(self.central_widget)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        # Верхняя панель (Интерфейс управления)
+        self.top_panel = QWidget()
+        self.panel_layout = QHBoxLayout(self.top_panel)
+
+        # Заготовки под виджеты UI
+        self.level_select = QComboBox()
+        self.level_select.addItems(["1. Кладбище", "2. Джунгли (Скоро)", "3. Киберпанк (Скоро)"])
+        self.btn_restart = QPushButton("Рестарт")
+        self.btn_scores = QPushButton("Рекорды")
+        self.lbl_timer = QLabel("Время: 0.0с")
+        self.lbl_clicks = QLabel("Клики: 0")
+
+        self.panel_layout.addWidget(self.level_select)
+        self.panel_layout.addWidget(self.btn_restart)
+        self.panel_layout.addWidget(self.btn_scores)
+        self.panel_layout.addWidget(self.lbl_timer)
+        self.panel_layout.addWidget(self.lbl_clicks)
+
+        # Подключаем игровое поле
+        self.board = GameBoard("assets/graveyard_1.png")
+
+        self.main_layout.addWidget(self.top_panel)
+        self.main_layout.addWidget(self.board)
+        self.setCentralWidget(self.central_widget)
+
+        self.apply_styles()
+
+    def apply_styles(self):
+        """Темная неоновая стилизация QSS для кнопок и панелей"""
+        self.setStyleSheet("""
+            QMainWindow { background-color: #0f1017; }
+            QWidget#top_panel { background-color: #161822; border-bottom: 2px solid #232738; }
+            QLabel { color: #8f9bb3; font-weight: bold; font-size: 14px; }
+            QPushButton { background-color: #232738; color: white; border: 1px solid #3b4266; padding: 5px 15px; font-weight: bold; }
+            QPushButton:hover { background-color: #3b4266; border-color: #00d2ff; }
+        """)
 
 
+# ==============================================================================
+# ЗАПУСК ПРИЛОЖЕНИЯ
+# ==============================================================================
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     win = MainWindow()
     win.show()
     sys.exit(app.exec())
+
+
+
 
