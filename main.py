@@ -8,6 +8,12 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt6.QtGui import QPainter, QPixmap
 
 
+GRID_CONFIG = {
+    "tile_size": 25,
+    "offset_x": 28,
+    "offset_y": 28
+}
+
 # ==============================================================================
 # 2. БАЗА ДАННЫХ И СКЛ
 # ==============================================================================
