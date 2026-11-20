@@ -7,6 +7,10 @@ import json
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt6.QtGui import QPainter, QPixmap
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QPainter, QPen, QBrush, QColor
+from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtGui import QGuiApplication
+
 
 
 
@@ -38,8 +42,27 @@ class Pathfinder:
 # 4. КЛАСС ОТЕЦ ДЛЯ ВСЕГО ЖИВОГО
 # ==============================================================================
 class BaseEntity:
-    """Абстрактный родитель для персонажей"""
-    pass
+    """Абстрактный родитель для всех персонажей игры (Робот, Боты, Босс)"""
+
+    def __init__(self, r, c, color_hex, speed=3):
+        self.row = r  # Текущая строка в матрице
+        self.col = c  # Текущий столбец в матрице
+        self.color = QColor(color_hex)
+        self.speed = speed
+
+        # Переводим клетку матрицы в точные пиксели центра этой клетки на экране
+        # Формула: Отступ + (Номер клетки * Размер) + Половина клетки (чтобы встать ровно по центру)
+        self.x = GRID_CONFIG["offset_x"] + c * GRID_CONFIG["tile_size"] + GRID_CONFIG["tile_size"] // 2
+        self.y = GRID_CONFIG["offset_y"] + r * GRID_CONFIG["tile_size"] + GRID_CONFIG["tile_size"] // 2
+
+    def draw(self, painter):
+        """Общий метод отрисовки примитива (круга) для всех существ"""
+        painter.setBrush(self.color)
+        painter.setPen(QPen(Qt.GlobalColor.white, 1))  # Белая тонкая обводка
+        radius = 9  # Радиус круга (чуть меньше клетки 25x25)
+
+        # Рисуем круг по текущим пиксельным координатам
+        painter.drawEllipse(int(self.x - radius), int(self.y - radius), radius * 2, radius * 2)
 
 
 # ==============================================================================
@@ -54,8 +77,14 @@ class PatrolBot(BaseEntity):
 # 6. КЛАСС РОБОТА
 # ==============================================================================
 class RobotPlayer(BaseEntity):
-    """Робот под управлением игрока"""
-    pass
+    """Робот под управлением игрока (Наследует всё от BaseEntity)"""
+
+    def __init__(self, r, c):
+        # Вызываем конструктор отца (super), отдаем ему координаты, неоновый синий цвет и скорость 3
+        super().__init__(r, c, color_hex="#00d2ff", speed=3)
+
+        # Будущая память для маршрута
+        self.path = []
 
 
 # ==============================================================================
@@ -76,10 +105,8 @@ class GameMapWidget(QWidget):
         super().__init__()
         self.setFixedSize(1200, 675)
 
-        # 1. Загрузка картинки карты
         self.bg_pixmap = QPixmap(image_path) if os.path.exists(image_path) else None
 
-        # 2. Распаковка матрицы из JSON
         self.matrix = []
         if os.path.exists(json_path):
             with open(json_path, "r", encoding="utf-8") as f:
@@ -89,15 +116,20 @@ class GameMapWidget(QWidget):
         self.rows = len(self.matrix)
         self.cols = len(self.matrix) if self.rows > 0 else 0
 
-        # СЮДА ВСТАВЛЯЕМ ТОЛЬКО ПЕРЕМЕННЫЕ ПАМЯТИ (в самый конец __init__)
         self.saved_row = None
         self.saved_col = None
 
+        # === НОВАЯ СТРОЧКА: Спавним робота на клетку (20, 3) — там где буква 'S' ===
+        self.robot = RobotPlayer(20, 3)
+
     def paintEvent(self, event):
-        """Отрисовка заднего фона"""
+        """Отрисовка заднего фона и персонажей"""
         painter = QPainter(self)
         if self.bg_pixmap:
             painter.drawPixmap(0, 0, self.width(), self.height(), self.bg_pixmap)
+
+        # === НОВАЯ СТРОЧКА: Даем команду роботу нарисовать себя поверх карты ===
+        self.robot.draw(painter)
 
     # А СЮДА (ниже paintEvent) ВСТАВЛЯЕМ ОБРАБОТКУ КЛИКОВ КАК ОТДЕЛЬНЫЙ МЕТОД
     def mousePressEvent(self, event):
@@ -119,11 +151,6 @@ class GameMapWidget(QWidget):
             else:
                 print("Клик мимо игровой зоны!")
 
-    def paintEvent(self, event):
-        """Отрисовка заднего фона"""
-        painter = QPainter(self)
-        if self.bg_pixmap:
-            painter.drawPixmap(0, 0, self.width(), self.height(), self.bg_pixmap)
 
 
 # ==============================================================================
@@ -139,6 +166,19 @@ class MainWindow(QMainWindow):
         # Подключаем виджет карты
         self.game_surface = GameMapWidget("assets/graveyard_1.png", "maps.json")
         self.setCentralWidget(self.game_surface)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Этот код сработает ОДИН РАЗ в момент, когда окно РЕАЛЬНО появилось и приняло финальный размер
+        window_geometry = self.frameGeometry()
+        from PyQt6.QtGui import QCursor
+        screen = QGuiApplication.screenAt(QCursor.pos())
+        if not screen:
+            screen = QGuiApplication.primaryScreen()
+
+        screen_center = screen.geometry().center()
+        window_geometry.moveCenter(screen_center)
+        self.move(window_geometry.topLeft())
 
 
 # ==============================================================================
