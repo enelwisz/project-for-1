@@ -21,6 +21,13 @@ GRID_CONFIG = {
     "offset_y": 28
 }
 
+
+BOT_ROUTES = {
+    "bot_1": [(6, 15), (6, 22)],
+    "bot_2": [(12, 1), (12, 10)]
+}
+
+
 # ==============================================================================
 # 2. БАЗА ДАННЫХ И СКЛ
 # ==============================================================================
@@ -131,8 +138,18 @@ class BaseEntity:
 # 5. КЛАСС БОТОВ
 # ==============================================================================
 class PatrolBot(BaseEntity):
-    """Патрульный бот"""
-    pass
+    """Патрульный бот (Наследует всё от BaseEntity)"""
+
+    def __init__(self, route_points, color_hex="#ff2846"):
+        # Берём самую первую клетку из списка маршрута как стартовую позицию
+        start_r, start_c = route_points[0]
+
+        # Передаем координаты Всеотцу, задаем красный цвет врага и скорость 2
+        super().__init__(start_r, start_c, color_hex, speed=2)
+
+        # Запоминаем весь список точек для будущего патрулирования
+        self.route = route_points
+        self.target_idx = 1  # Индекс следующей точки, к которой пойдет бот
 
 
 # ==============================================================================
@@ -196,66 +213,75 @@ class GameMapWidget(QWidget):
         super().__init__()
         self.setFixedSize(1200, 675)
 
-        # 1. Загрузка картинки карты
         self.bg_pixmap = QPixmap(image_path) if os.path.exists(image_path) else None
 
-        # 2. Распаковка матрицы из JSON
         self.matrix = []
         if os.path.exists(json_path):
             with open(json_path, "r", encoding="utf-8") as f:
                 raw_data = json.load(f)
                 self.matrix = [list(row) for row in raw_data["graveyard"]]
 
-        # Динамически запоминаем размеры сетки из загруженного JSON
         self.rows = len(self.matrix)
-        self.cols = len(self.matrix) if self.rows > 0 else 0
+        self.cols = len(self.matrix[0]) if self.rows > 0 else 0
 
-        # Переменные для сохранения последней выбранной цели клика
         self.saved_row = None
         self.saved_col = None
 
-        # Спавним робота на стартовую позицию (строка 20, колонка 3 — там где буква 'S')
+        # Создаем робота на старте
         self.robot = RobotPlayer(20, 3)
 
+        # Создаем список из двух красных ботов, выдергивая маршруты из словаря
+        self.bots = [
+            PatrolBot(BOT_ROUTES["bot_1"]),
+            PatrolBot(BOT_ROUTES["bot_2"])
+        ]
+
+        # Запускаем главный игровой цикл (60 FPS -> 16 миллисекунд)
+        self.game_timer = QTimer()
+        self.game_timer.timeout.connect(self.update_game_state)
+        self.game_timer.start(16)
+
     def paintEvent(self, event):
-        """Отрисовка заднего фона и персонажей поверх него"""
+        """Отрисовка заднего фона и всех персонажей поверх него"""
         painter = QPainter(self)
         if self.bg_pixmap:
             painter.drawPixmap(0, 0, self.width(), self.height(), self.bg_pixmap)
 
-        # Даем команду роботу нарисовать себя поверх карты
+        # Рисуем робота
         self.robot.draw(painter)
+
+        # Пробегаем по списку ботов и рисуем каждого
+        for bot in self.bots:
+            bot.draw(painter)
 
     def mousePressEvent(self, event):
         """ОБРАБОТКА КЛИКОВ: Перевод пикселей экрана в ячейку матрицы и запуск A*"""
         if event.button() == Qt.MouseButton.LeftButton:
-
-            # Математика: вычитаем отступ и делим на размер клетки
             col = (int(event.position().x()) - GRID_CONFIG["offset_x"]) // GRID_CONFIG["tile_size"]
             row = (int(event.position().y()) - GRID_CONFIG["offset_y"]) // GRID_CONFIG["tile_size"]
 
-            # Проверяем, что клик не вылетел за границы игровой сетки лабиринта
             if 0 <= row < self.rows and 0 <= col < self.cols:
-                # Нам строго запрещено кликать в стены '#' или закрытые двери 'D'
                 if self.matrix[row][col] not in ("#", "D"):
-                    # Сохраняем координаты цели в память виджета
                     self.saved_row = row
                     self.saved_col = col
 
-                    # Запрашиваем маршрут у твоего класса Pathfinder с алгоритмом A*:
-                    # Передаем: матрицу, текущую позицию робота и сохраненные координаты клика
                     calculated_path = Pathfinder.get_path(
                         self.matrix,
                         (self.robot.row, self.robot.col),
                         (self.saved_row, self.saved_col)
                     )
 
-                    # Записываем посчитанный список клеток прямо в карман нашему роботу
                     self.robot.path = calculated_path
-
                     print(f"Путь рассчитан алгоритмом A*! Длина маршрута: {len(calculated_path)} шагов.")
-            else:
-                print("Клик за пределами лабиринта!")
+
+    # === ВОТ ОН, НАШ НОВЫЙ МЕТОД ОБНОВЛЕНИЯ ИГРЫ ===
+    def update_game_state(self):
+        """Каждые 16мс этот метод вызывается таймером автоматически"""
+        # Приказываем роботу сделать один микро-шаг по пикселям
+        self.robot.move_along_path()
+
+        # Даем приказ PyQt6 принудительно вызвать paintEvent, чтобы обновить экран
+        self.update()
 
 
 # ==============================================================================
