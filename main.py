@@ -140,13 +140,42 @@ class PatrolBot(BaseEntity):
 # ==============================================================================
 class RobotPlayer(BaseEntity):
     """Робот под управлением игрока (Наследует всё от BaseEntity)"""
-
     def __init__(self, r, c):
-        # Вызываем конструктор отца (super), отдаем ему координаты, неоновый синий цвет и скорость 3
-        super().__init__(r, c, color_hex="#00d2ff", speed=3)
+        super().__init__(r, c, color_hex="#00d2ff", speed=3) # Скорость 3 пикселя за кадр
+        self.path = [] # Список клеток маршрута, полученный от A*
 
-        # Будущая память для маршрута
-        self.path = []
+    def move_along_path(self):
+        """Плавное попиксельное движение робота по точкам из self.path"""
+        if not self.path:
+            return  # Если пути нет — стоим на месте
+
+        # Берем самую первую клетку из маршрута как текущую цель
+        target_row, target_col = self.path[0]
+
+        # Рассчитываем точные пиксельные координаты центра этой целевой клетки
+        target_x = GRID_CONFIG["offset_x"] + target_col * GRID_CONFIG["tile_size"] + GRID_CONFIG["tile_size"] // 2
+        target_y = GRID_CONFIG["offset_y"] + target_row * GRID_CONFIG["tile_size"] + GRID_CONFIG["tile_size"] // 2
+
+        # Плавно двигаем координату X к цели
+        if self.x < target_x:
+            self.x = min(self.x + self.speed, target_x)
+        elif self.x > target_x:
+            self.x = max(self.x - self.speed, target_x)
+
+        # Плавно двигаем координату Y к цели
+        if self.y < target_y:
+            self.y = min(self.y + self.speed, target_y)
+        elif self.y > target_y:
+            self.y = max(self.y - self.speed, target_y)
+
+        # Если робот физически доехал пикселями до центра этой клетки
+        if self.x == target_x and self.y == target_y:
+            # Обновляем его текущее логическое положение в матрице
+            self.row = target_row
+            self.col = target_col
+            # Удаляем эту клетку из маршрута, чтобы на следующем кадре ехать к следующей
+            self.path.pop(0)
+
 
 
 # ==============================================================================
