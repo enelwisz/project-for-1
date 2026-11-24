@@ -34,8 +34,69 @@ class DatabaseManager:
 # 3. КЛАСС ПОИСКА ПУТИ
 # ==============================================================================
 class Pathfinder:
-    """Алгоритм поиска кратчайшего пути"""
-    pass
+    """Умный движок поиска пути на базе алгоритма A* (A-Star)"""
+
+    @staticmethod
+    def get_path(matrix, start, goal):
+        """Возвращает кратчайший путь от старта до цели в обход стен '#' и 'D'"""
+        # Если старт и финиш совпадают — ехать никуда не надо
+        if start == goal:
+            return []
+
+        # Динамически определяем реальные размеры нашей JSON-карты
+        rows = len(matrix)
+        cols = len(matrix[0]) if rows > 0 else 0
+
+        # Очередь приоритетов (F, клетка)
+        open_set = []
+
+        # Журнал стоимости шагов (G)
+        G = {start: 0}
+
+        # Словарь предков для восстановления маршрута
+        parent = {}
+
+        # Считаем эвристику (H) Манхэттенского расстояния до цели
+        start_h = abs(start[0] - goal[0]) + abs(start[1] - goal[1])
+        heapq.heappush(open_set, (start_h, start))
+
+        while open_set:
+            current_f, current = heapq.heappop(open_set)
+
+            # Если дошли до цели — собираем путь назад по родительским стрелкам
+            if current == goal:
+                path = []
+                while current in parent:
+                    path.append(current)
+                    current = parent[current]
+                # Возвращаем путь, развернув его от старта к финишу
+                # Отрезаем саму стартовую клетку (path[::-1][1:]), чтобы робот не дергался на месте
+                return path[::-1]
+
+            r, c = current
+            # Проверяем 4 направления вокруг
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                neighbor = (r + dr, c + dc)
+                nr, nc = neighbor
+
+                # 1. Проверка динамических границ нашей карты
+                if 0 <= nr < rows and 0 <= nc < cols:
+                    # 2. Проверка препятствий: '#' (стена) и 'D' (закрытая дверь склепа) — непроходимы
+                    if matrix[nr][nc] in ("#", "D"):
+                        continue
+
+                    new_g = G[current] + 1
+
+                    if new_g < G.get(neighbor, float("inf")):
+                        parent[neighbor] = current
+                        G[neighbor] = new_g
+
+                        h = abs(nr - goal[0]) + abs(nc - goal[1])
+                        f = new_g + h
+
+                        heapq.heappush(open_set, (f, neighbor))
+
+        return []  # Безопасно возвращаем пустой список, если прохода нет
 
 
 # ==============================================================================
@@ -119,7 +180,6 @@ class GameMapWidget(QWidget):
         self.saved_row = None
         self.saved_col = None
 
-        # === НОВАЯ СТРОЧКА: Спавним робота на клетку (20, 3) — там где буква 'S' ===
         self.robot = RobotPlayer(20, 3)
 
     def paintEvent(self, event):
@@ -128,7 +188,6 @@ class GameMapWidget(QWidget):
         if self.bg_pixmap:
             painter.drawPixmap(0, 0, self.width(), self.height(), self.bg_pixmap)
 
-        # === НОВАЯ СТРОЧКА: Даем команду роботу нарисовать себя поверх карты ===
         self.robot.draw(painter)
 
     # А СЮДА (ниже paintEvent) ВСТАВЛЯЕМ ОБРАБОТКУ КЛИКОВ КАК ОТДЕЛЬНЫЙ МЕТОД
