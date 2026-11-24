@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter, QPen, QBrush, QColor
 from PyQt6.QtWidgets import QApplication, QMainWindow
 from PyQt6.QtGui import QGuiApplication
+import heapq
 
 
 
@@ -160,56 +161,72 @@ class GuardianBoss(BaseEntity):
 # 8. КЛАСС КАРТЫ ГДЕ ВСЕ ЗАГРУЖАЕТСЯ
 # ==============================================================================
 class GameMapWidget(QWidget):
-    """Экран игры: загрузка картинки, распаковка JSON и обработка кликов"""
+    """Экран игры: загрузка картинки, распаковка JSON, игровой цикл и клики мыши"""
 
     def __init__(self, image_path, json_path):
         super().__init__()
         self.setFixedSize(1200, 675)
 
+        # 1. Загрузка картинки карты
         self.bg_pixmap = QPixmap(image_path) if os.path.exists(image_path) else None
 
+        # 2. Распаковка матрицы из JSON
         self.matrix = []
         if os.path.exists(json_path):
             with open(json_path, "r", encoding="utf-8") as f:
                 raw_data = json.load(f)
                 self.matrix = [list(row) for row in raw_data["graveyard"]]
 
+        # Динамически запоминаем размеры сетки из загруженного JSON
         self.rows = len(self.matrix)
         self.cols = len(self.matrix) if self.rows > 0 else 0
 
+        # Переменные для сохранения последней выбранной цели клика
         self.saved_row = None
         self.saved_col = None
 
+        # Спавним робота на стартовую позицию (строка 20, колонка 3 — там где буква 'S')
         self.robot = RobotPlayer(20, 3)
 
     def paintEvent(self, event):
-        """Отрисовка заднего фона и персонажей"""
+        """Отрисовка заднего фона и персонажей поверх него"""
         painter = QPainter(self)
         if self.bg_pixmap:
             painter.drawPixmap(0, 0, self.width(), self.height(), self.bg_pixmap)
 
+        # Даем команду роботу нарисовать себя поверх карты
         self.robot.draw(painter)
 
-    # А СЮДА (ниже paintEvent) ВСТАВЛЯЕМ ОБРАБОТКУ КЛИКОВ КАК ОТДЕЛЬНЫЙ МЕТОД
     def mousePressEvent(self, event):
-        """ОБРАБОТКА КЛИКОВ: Перевод пикселей экрана в координаты ячейки матрицы"""
+        """ОБРАБОТКА КЛИКОВ: Перевод пикселей экрана в ячейку матрицы и запуск A*"""
         if event.button() == Qt.MouseButton.LeftButton:
 
             # Математика: вычитаем отступ и делим на размер клетки
             col = (int(event.position().x()) - GRID_CONFIG["offset_x"]) // GRID_CONFIG["tile_size"]
             row = (int(event.position().y()) - GRID_CONFIG["offset_y"]) // GRID_CONFIG["tile_size"]
 
-            # Проверяем границы сетки лабиринта
+            # Проверяем, что клик не вылетел за границы игровой сетки лабиринта
             if 0 <= row < self.rows and 0 <= col < self.cols:
-                # Перезаписываем глобальную память, созданную в __init__
-                self.saved_row = row
-                self.saved_col = col
+                # Нам строго запрещено кликать в стены '#' или закрытые двери 'D'
+                if self.matrix[row][col] not in ("#", "D"):
+                    # Сохраняем координаты цели в память виджета
+                    self.saved_row = row
+                    self.saved_col = col
 
-                cell_type = self.matrix[self.saved_row][self.saved_col]
-                print(f"Данные сохранены! Цель: [{self.saved_row}][{self.saved_col}] | Тип: '{cell_type}'")
+                    # Запрашиваем маршрут у твоего класса Pathfinder с алгоритмом A*:
+                    # Передаем: матрицу, текущую позицию робота и сохраненные координаты клика
+                    calculated_path = Pathfinder.get_path(
+                        self.matrix,
+                        (self.robot.row, self.robot.col),
+                        (self.saved_row, self.saved_col)
+                    )
+
+                    # Записываем посчитанный список клеток прямо в карман нашему роботу
+                    self.robot.path = calculated_path
+
+                    print(f"Путь рассчитан алгоритмом A*! Длина маршрута: {len(calculated_path)} шагов.")
             else:
-                print("Клик мимо игровой зоны!")
-
+                print("Клик за пределами лабиринта!")
 
 
 # ==============================================================================
